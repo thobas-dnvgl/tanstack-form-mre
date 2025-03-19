@@ -23,9 +23,9 @@ body {
 
 .Debug {
   margin-top: 1rem;
-  outline: 1px solid red;
+  outline: 1px solid salmon;
   strong {
-    color: red;
+    color: salmon;
   }
 }
 
@@ -72,4 +72,8 @@ button:disabled {
   background-color: #cccccc;
   color: #666666;
   cursor: not-allowed;
+}
+
+code {
+  font-size: 1em;
 }

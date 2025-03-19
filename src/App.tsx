@@ -1,8 +1,21 @@
-import "./App.css";
 import { type AnyFieldApi, useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
+import { ZodError, ZodIssueCode } from "zod";
+import "./App.css";
 import { Requirements } from "./Requirements";
 import { FormSchema } from "./formSchema";
+
+declare global {
+  interface Window {
+    emailIsDupe: HTMLInputElement;
+  }
+  interface Window {
+    recaptchaCodeRejected: HTMLInputElement;
+  }
+  interface Window {
+    serverCrashed: HTMLInputElement;
+  }
+}
 
 function App() {
   return (
@@ -28,31 +41,28 @@ function Form() {
       // Reset the submit state
       setSubmitState("idle");
 
-      // Simulate a server request for 1 second
-      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      console.info("submitting", value);
 
-      // If the name contains "google" simulate a recaptcha error
-      if (value.name.includes("google")) {
+      // Simulate a server request
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+
+      if (window["recaptchaCodeRejected"].checked) {
+        // TODO: set the error on the form and not just on the field
         form.setFieldMeta("recaptchaCode", (meta) => {
           return {
             ...meta,
             errorMap: {
               ...meta.errorMap,
-              // Make it look like a Zod error
-              onBlur: {
-                validation: "custom",
-                code: "invalid_code",
-                message: "ReCAPTCHA is invalid",
-                path: ["recaptchaCode"],
-              },
+              onBlur: simulateZodError("ReCAPTCHA is invalid", [
+                "recaptchaCode",
+              ]),
             },
           };
         });
         return;
       }
 
-      // If the name contains "500" simulate a server error
-      if (value.name.includes("500")) {
+      if (window["serverCrashed"].checked) {
         setSubmitState("error");
         return;
       }
@@ -121,15 +131,12 @@ function Form() {
             validators={{
               onBlurAsyncDebounceMs: 300,
               onBlurAsync: async ({ value }) => {
-                await new Promise((resolve) => setTimeout(resolve, 1_000));
+                await new Promise((resolve) => setTimeout(resolve, 2_000));
                 return (
-                  value.includes("dupe") && {
-                    // Make it look like a Zod error
-                    validation: "custom",
-                    code: "already_in_use",
-                    message: "Email already in use",
-                    path: ["email"],
-                  }
+                  window["emailIsDupe"].checked &&
+                  simulateZodError(`Email address ${value} already in use`, [
+                    "email",
+                  ])
                 );
               },
             }}
@@ -191,12 +198,30 @@ function Form() {
           selector={(state) => [state.isSubmitting, state.isValidating]}
           children={([isSubmitting, isValidating]) => (
             <button type="submit" disabled={isSubmitting || isValidating}>
-              {isSubmitting ? "..." : "Submit"}
+              {isSubmitting ? "Submitting..." : "Submit"}
             </button>
           )}
         />
         <div className="Debug">
-          <strong>debug zone</strong>
+          <strong>debug/config zone</strong>
+          <div>
+            <label>
+              <input type="checkbox" id="emailIsDupe" /> Email async validation
+              indicates a dupe
+            </label>
+          </div>
+          <div>
+            <label>
+              <input type="checkbox" id="serverCrashed" /> Server returns an
+              error 500
+            </label>
+          </div>
+          <div>
+            <label>
+              <input type="checkbox" id="recaptchaCodeRejected" /> Server
+              rejects ReCAPTCHA code
+            </label>
+          </div>
           <form.Subscribe
             selector={(state) => [state.values, state.errorMap, state.errors]}
             children={([values, errorMap, errors]) => (
@@ -233,6 +258,16 @@ function FieldInfo({
       {field.state.meta.isValidating ? "Validating..." : null}
     </>
   );
+}
+
+function simulateZodError(message: string, path: string[]) {
+  return new ZodError([
+    {
+      code: ZodIssueCode.custom,
+      message,
+      path,
+    },
+  ]).errors[0];
 }
 
 export default App;
