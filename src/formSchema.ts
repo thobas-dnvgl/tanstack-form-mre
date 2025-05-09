@@ -12,3 +12,4 @@ export const FormSchema = z.object({
     .string({ message: "ReCAPTCHA is required" })
     .min(1, { message: "ReCAPTCHA is required" }), // Without this, zod considers an empty string as valid
 });
+export type FormData = z.input<typeof FormSchema>;

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ZodError, ZodIssueCode } from "zod";
 import "./App.css";
 import { Requirements } from "./Requirements";
-import { FormSchema } from "./formSchema";
+import { FormSchema, type FormData } from "./formSchema";
 
 declare global {
   interface Window {
@@ -30,34 +30,24 @@ function Form() {
   const [submitState, setSubmitState] = useState<"idle" | "success" | "error">(
     "idle"
   );
+  const defaultValues = {
+    name: "",
+    email: "",
+    recaptchaCode: "",
+  } as FormData;
   const form = useForm({
-    defaultValues: {
-      name: "",
-      email: "",
-      recaptchaCode: "",
-    },
-    validators: { onBlur: FormSchema },
-    onSubmit: async ({ value }) => {
-      // Reset the submit state
-      setSubmitState("idle");
-
+    defaultValues,
+    validators: { onChange: FormSchema },
+    canSubmitWhenInvalid: true,
+    onSubmit: async ({ value, formApi }) => {
       console.info("submitting", value);
-
+      setSubmitState("idle");
       // Simulate a server request
       await new Promise((resolve) => setTimeout(resolve, 2_000));
 
       if (window["recaptchaCodeRejected"].checked) {
-        // TODO: set the error on the form and not just on the field
-        form.setFieldMeta("recaptchaCode", (meta) => {
-          return {
-            ...meta,
-            errorMap: {
-              ...meta.errorMap,
-              onBlur: simulateZodError("ReCAPTCHA is invalid", [
-                "recaptchaCode",
-              ]),
-            },
-          };
+        formApi.fieldInfo.recaptchaCode.instance?.setErrorMap({
+          onChange: simulateZodError("ReCAPTCHA is invalid", ["recaptchaCode"]),
         });
         return;
       }
@@ -71,7 +61,6 @@ function Form() {
     },
     onSubmitInvalid: () => {
       window.document.querySelector('[data-error="true"]')?.scrollIntoView();
-      // onSubmitInvalid is only called the first time unfortunately https://github.com/TanStack/form/discussions/715
     },
   });
   const { submissionAttempts } = useStore(form.store, (state) => ({
@@ -171,18 +160,9 @@ function Form() {
                   value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(e) => {
-                    field.handleChange(e.target.value);
-                    if (e.target.checked) {
-                      // Simulate the official recaptcha widget, you get a code by proving you are not a robot
-                      const randomCharacters = Math.random()
-                        .toString(36)
-                        .substring(7);
-                      form.setFieldValue("recaptchaCode", randomCharacters);
-                    } else {
-                      form.setFieldValue("recaptchaCode", "");
-                    }
-                    // Trigger the form validation
-                    form.validateField("recaptchaCode", "blur");
+                    const checked = e.target.checked;
+                    field.handleChange(checked ? generateRecaptchaCode() : "");
+                    field.validate("change");
                   }}
                 />
                 <label htmlFor={field.name}>I am not a robot</label>
@@ -250,7 +230,7 @@ function FieldInfo({
   return (
     <>
       {(field.state.meta.isTouched || submissionAttempts > 0) &&
-      field.state.meta.errors.length ? (
+      !field.state.meta.isValid ? (
         <em style={{ color: "red" }} data-error="true">
           {field.state.meta.errors.map((e) => e.message).join(", ")}
         </em>
@@ -268,6 +248,10 @@ function simulateZodError(message: string, path: string[]) {
       path,
     },
   ]).errors[0];
+}
+
+function generateRecaptchaCode(max = 8) {
+  return Math.random().toString(36).substring(max);
 }
 
 export default App;
